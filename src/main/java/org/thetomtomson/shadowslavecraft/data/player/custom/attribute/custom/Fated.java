@@ -22,9 +22,4 @@ public class Fated extends Attribute {
         tag.putString("description", description);
         return tag;
     }
-
-    @Override
-    public void fromNBT(CompoundTag tag) {
-        // pola są final — odczyt przez fabrykę AttributeFactory
-    }
 }

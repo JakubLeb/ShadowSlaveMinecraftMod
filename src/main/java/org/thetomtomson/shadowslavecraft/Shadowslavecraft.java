@@ -1,6 +1,8 @@
 package org.thetomtomson.shadowslavecraft;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -15,9 +17,12 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.slf4j.Logger;
+import org.thetomtomson.shadowslavecraft.data.ModDataAttachments;
 import org.thetomtomson.shadowslavecraft.data.player.custom.SpellPlayerData;
 import org.thetomtomson.shadowslavecraft.keyinput.custom.ModKeyMappings;
+import org.thetomtomson.shadowslavecraft.networking.SyncSpellDataPayload;
 import org.thetomtomson.shadowslavecraft.screen.ModMenuTypes;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -49,17 +54,32 @@ public class Shadowslavecraft {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
     }
-
-    /*
-    public void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
-        Player player = event.getEntity();
-        // Pobierz swoje dane (zależnie od tego, jak masz rozwiązane Capability)
-        SpellPlayerData data = player.getCapability(YOUR_CAPABILITY).orElse(new SpellPlayerData());
-
-        // Ustawienie nazwy z obiektu gracza Minecraft
-        data.setName(player.getName().getString());
+    public class ClientPacketHandler {
+        public static void handleSync(final SyncSpellDataPayload payload, final net.neoforged.neoforge.network.handling.IPayloadContext context) {
+            context.enqueueWork(() -> {
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc.player != null) {
+                    // Pobieramy lokalne dane i ładujemy do nich NBT z serwera
+                    mc.player.getData(ModDataAttachments.SPELL_DATA).load(payload.dataTag(), mc.level.registryAccess()); //
+                }
+            });
+        }
     }
-    */
+
+    @SubscribeEvent
+    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+            syncPlayerData(serverPlayer);
+        }
+    }
+
+    public static void syncPlayerData(ServerPlayer player) {
+        SpellPlayerData data = player.getData(ModDataAttachments.SPELL_DATA);
+        CompoundTag nbt = data.save(new CompoundTag(), player.registryAccess()); //
+
+        // Wysyłamy pakiet (używając PacketDistributor)
+        PacketDistributor.sendToPlayer(player, new SyncSpellDataPayload(nbt));
+    }
 
     @SuppressWarnings("removal")
     @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
